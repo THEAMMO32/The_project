@@ -1,0 +1,70 @@
+name: Tests and Code Quality
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # workflow_dispatch:  # Закомментировать если не используется
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # Общий таймаут для всего job
+
+    strategy:
+      matrix:
+        python-version: ['3.9']  # Оставить только одну версию для скорости
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      timeout-minutes: 5
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
+
+    - name: Lint with flake8
+      timeout-minutes: 2
+      run: |
+        flake8 src tests scripts --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 src tests scripts --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+
+    - name: Check formatting with black
+      timeout-minutes: 2
+      run: black --check src tests scripts
+
+    - name: Run tests with pytest
+      timeout-minutes: 10
+      run: |
+        pytest tests/ -v --cov=src --cov-report=xml --cov-report=html --tb=short
+
+    - name: Run simple analysis (быстрый)
+      timeout-minutes: 3
+      run: |
+        mkdir -p data/reports
+        # Анализируем только 1 файл для скорости
+        python scripts/run_analysis.py data/student_codes/good_example.py --output data/reports/ci_analysis
+
+    - name: Upload test coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+    - name: Upload analysis reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: code-analysis-reports
+        path: |
+          data/reports/
+          htmlcov/
+        retention-days: 30
